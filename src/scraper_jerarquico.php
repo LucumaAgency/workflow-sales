@@ -28,20 +28,20 @@ class ScraperJerarquico
         '04' => 'AREQUIPA',
         '05' => 'AYACUCHO',
         '06' => 'CAJAMARCA',
-        '07' => 'CUSCO',
-        '08' => 'HUANCAVELICA',
-        '09' => 'HUANUCO',
-        '10' => 'ICA',
-        '11' => 'JUNIN',
-        '12' => 'LA LIBERTAD',
-        '13' => 'LAMBAYEQUE',
-        '14' => 'LIMA',
-        '15' => 'LORETO',
-        '16' => 'MADRE DE DIOS',
-        '17' => 'MOQUEGUA',
-        '18' => 'PASCO',
-        '19' => 'PIURA',
-        '20' => 'PROV. CONST. DEL CALLAO',
+        '07' => 'CALLAO',
+        '08' => 'CUSCO',
+        '09' => 'HUANCAVELICA',
+        '10' => 'HUANUCO',
+        '11' => 'ICA',
+        '12' => 'JUNIN',
+        '13' => 'LA LIBERTAD',
+        '14' => 'LAMBAYEQUE',
+        '15' => 'LIMA',
+        '16' => 'LORETO',
+        '17' => 'MADRE DE DIOS',
+        '18' => 'MOQUEGUA',
+        '19' => 'PASCO',
+        '20' => 'PIURA',
         '21' => 'PUNO',
         '22' => 'SAN MARTIN',
         '23' => 'TACNA',
@@ -268,8 +268,21 @@ class ScraperJerarquico
         echo "Scrapeando empresas del distrito $codDistrito...\n\n";
         
         $url = $urlBase . '?dist=' . $codDistrito;
-        $response = $this->client->get($url);
-        $html = $response->getBody()->getContents();
+        
+        try {
+            $response = $this->client->get($url);
+            $html = $response->getBody()->getContents();
+        } catch (\GuzzleHttp\Exception\ClientException $e) {
+            if ($e->getResponse()->getStatusCode() == 404) {
+                echo "❌ No se encontraron empresas en este distrito para esta categoría.\n";
+                echo "   Intenta con otro distrito o navega desde el departamento.\n\n";
+                echo "Sugerencia: Primero verifica qué distritos tienen empresas:\n";
+                echo "  php src\\scraper_jerarquico.php -c $categoria -d $codDepartamento -p $codProvincia\n";
+                return [];
+            }
+            throw $e;
+        }
+        
         $crawler = new Crawler($html);
         
         $empresas = [];
