@@ -314,6 +314,34 @@ class ScraperJerarquico
             
             try {
                 $detalles = $this->obtenerDetallesEmpresa($empresa['url']);
+                
+                // Verificar si es una entidad gubernamental
+                $esGubernamental = false;
+                
+                // Verificar por el nombre
+                $palabrasGubernamentales = ['MINISTERIO', 'MUNICIPALIDAD', 'GOBIERNO', 'POLICIA', 'EJERCITO', 
+                                           'FUERZA AEREA', 'MARINA', 'SUNAT', 'SUNARP', 'RENIEC', 
+                                           'ESSALUD', 'SEGURO SOCIAL', 'INSTITUTO NACIONAL', 'SUPERINTENDENCIA'];
+                foreach ($palabrasGubernamentales as $palabra) {
+                    if (stripos($empresa['nombre'], $palabra) !== false) {
+                        $esGubernamental = true;
+                        break;
+                    }
+                }
+                
+                // Verificar por el website
+                if (!$esGubernamental && isset($detalles['website'])) {
+                    if (strpos($detalles['website'], 'gob.pe') !== false || 
+                        strpos($detalles['website'], '.gob.') !== false) {
+                        $esGubernamental = true;
+                    }
+                }
+                
+                if ($esGubernamental) {
+                    echo "   ⚠️ Entidad gubernamental - EXCLUIDA\n";
+                    continue; // Saltar esta empresa
+                }
+                
                 $empresaCompleta = array_merge($empresa, $detalles);
                 $resultados[] = $empresaCompleta;
                 
@@ -413,7 +441,7 @@ class ScraperJerarquico
         $webLinks->each(function($node) use (&$data) {
             $href = $node->attr('href');
             
-            // Lista de dominios a excluir (solo redes sociales y buscadores)
+            // Lista de dominios a excluir (redes sociales, buscadores y sitios gubernamentales)
             $dominiosExcluidos = [
                 'facebook.com',
                 'twitter.com',
@@ -426,8 +454,9 @@ class ScraperJerarquico
                 'wikipedia.org',
                 'google.com',
                 'yahoo.com',
-                'bing.com'
-                // NO excluir sitios gubernamentales como sunat.gob.pe
+                'bing.com',
+                'gob.pe',  // Cualquier sitio gubernamental
+                '.gob.'    // Cualquier dominio con .gob.
             ];
             
             $esExcluido = false;
