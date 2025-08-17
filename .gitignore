@@ -13,7 +13,7 @@ composer.lock
 /data/output/
 /data/cache/
 *.csv
-*.json
+/data/**/*.json
 
 # IDE
 .vscode/

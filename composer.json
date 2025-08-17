@@ -1,0 +1,23 @@
+{
+    "name": "lucuma-agency/workflow-sales",
+    "description": "Pipeline de generación de leads B2B para Perú",
+    "type": "project",
+    "require": {
+        "php": ">=7.4",
+        "guzzlehttp/guzzle": "^7.0",
+        "symfony/dom-crawler": "^5.0",
+        "symfony/css-selector": "^5.0",
+        "league/csv": "^9.0",
+        "monolog/monolog": "^2.0",
+        "vlucas/phpdotenv": "^5.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "WorkflowSales\\": "src/"
+        }
+    },
+    "scripts": {
+        "start": "php src/main.php",
+        "test": "php src/test.php"
+    }
+}
