@@ -317,7 +317,13 @@ class ScraperJerarquico
                 $empresaCompleta = array_merge($empresa, $detalles);
                 $resultados[] = $empresaCompleta;
                 
-                echo "   ✓ Datos extraídos\n";
+                echo "   ✓ Datos extraídos";
+                if (isset($detalles['ruc'])) {
+                    echo " (RUC: {$detalles['ruc']})";
+                } else {
+                    echo " (Sin RUC)";
+                }
+                echo "\n";
                 sleep(1);
                 
             } catch (Exception $e) {
@@ -344,8 +350,15 @@ class ScraperJerarquico
         
         $data = [];
         
+        // Primero intentar extraer RUC del texto completo si no está en tabla
+        $htmlText = $crawler->text();
+        if (preg_match('/RUC[:\s]+(\d{11})/', $htmlText, $matches)) {
+            $data['ruc'] = $matches[1];
+        }
+        
         // Buscar datos en tabla - Extracción mejorada
-        $crawler->filter('table tr')->each(function($row) use (&$data) {
+        $crawler->filter('table tr, div.info-row, div.datos')->each(function($row) use (&$data) {
+            // Intentar como tabla
             $cells = $row->filter('td');
             if ($cells->count() >= 2) {
                 $label = trim($cells->eq(0)->text());
@@ -354,8 +367,13 @@ class ScraperJerarquico
                 // Limpiar el label de dos puntos
                 $label = str_replace(':', '', $label);
                 
-                if (strpos($label, 'RUC') !== false) {
-                    $data['ruc'] = $value;
+                if (strpos($label, 'RUC') !== false && !isset($data['ruc'])) {
+                    // Extraer solo los 11 dígitos del RUC
+                    if (preg_match('/(\d{11})/', $value, $matches)) {
+                        $data['ruc'] = $matches[1];
+                    } else {
+                        $data['ruc'] = $value;
+                    }
                 } elseif (strpos($label, 'Razón Social') !== false || strpos($label, 'Razon Social') !== false) {
                     $data['razon_social'] = $value;
                 } elseif (strpos($label, 'Nombre Comercial') !== false) {
@@ -395,7 +413,7 @@ class ScraperJerarquico
         $webLinks->each(function($node) use (&$data) {
             $href = $node->attr('href');
             
-            // Lista de dominios a excluir (redes sociales, directorios, etc)
+            // Lista de dominios a excluir (solo redes sociales y buscadores)
             $dominiosExcluidos = [
                 'facebook.com',
                 'twitter.com',
@@ -409,6 +427,7 @@ class ScraperJerarquico
                 'google.com',
                 'yahoo.com',
                 'bing.com'
+                // NO excluir sitios gubernamentales como sunat.gob.pe
             ];
             
             $esExcluido = false;
@@ -474,6 +493,21 @@ class ScraperJerarquico
                 }
             }
         });
+        
+        // Si no se encontró website válido, asegurar que quede vacío (no Facebook, etc)
+        if (isset($data['website'])) {
+            // Verificar una vez más que no sea un dominio excluido
+            $dominiosNoValidos = ['facebook.com', 'twitter.com', 'instagram.com', 'linkedin.com'];
+            foreach ($dominiosNoValidos as $dominio) {
+                if (strpos($data['website'], $dominio) !== false) {
+                    unset($data['website']); // Eliminar website si es red social
+                    unset($data['email_probable']); // No generar email de redes sociales
+                    unset($data['email_verificado']);
+                    unset($data['email_score']);
+                    break;
+                }
+            }
+        }
         
         $data['fecha_scraping'] = date('Y-m-d H:i:s');
         
