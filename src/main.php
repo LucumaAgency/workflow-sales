@@ -31,7 +31,7 @@ if (isset($options['h']) || isset($options['help'])) {
     exit(0);
 }
 
-$category = $options['c'] ?? $options['category'] ?? 'restaurantes-peru';
+$category = $options['c'] ?? $options['category'] ?? 'restaurantes-bares-y-cantinas-categoria';
 $limit = $options['l'] ?? $options['limit'] ?? 100;
 $output = $options['o'] ?? $options['output'] ?? 'data/output/leads_' . date('Y-m-d_H-i-s') . '.csv';
 
