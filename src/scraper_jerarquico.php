@@ -344,45 +344,105 @@ class ScraperJerarquico
         
         $data = [];
         
-        // Buscar datos en tabla
+        // Buscar datos en tabla - Extracción mejorada
         $crawler->filter('table tr')->each(function($row) use (&$data) {
             $cells = $row->filter('td');
             if ($cells->count() >= 2) {
                 $label = trim($cells->eq(0)->text());
                 $value = trim($cells->eq(1)->text());
                 
+                // Limpiar el label de dos puntos
+                $label = str_replace(':', '', $label);
+                
                 if (strpos($label, 'RUC') !== false) {
                     $data['ruc'] = $value;
-                } elseif (strpos($label, 'Razón Social') !== false) {
+                } elseif (strpos($label, 'Razón Social') !== false || strpos($label, 'Razon Social') !== false) {
                     $data['razon_social'] = $value;
-                } elseif (strpos($label, 'Teléfono') !== false) {
-                    $data['telefono'] = $value;
-                } elseif (strpos($label, 'Dirección') !== false) {
+                } elseif (strpos($label, 'Nombre Comercial') !== false) {
+                    $data['nombre_comercial'] = $value;
+                } elseif (strpos($label, 'Tipo Empresa') !== false) {
+                    $data['tipo_empresa'] = $value;
+                } elseif (strpos($label, 'Condición') !== false && strpos($label, 'Domicilio') === false) {
+                    $data['condicion'] = $value;
+                } elseif (strpos($label, 'Fecha Inicio') !== false) {
+                    $data['fecha_inicio'] = $value;
+                } elseif (strpos($label, 'Actividad Comercial') !== false) {
+                    $data['actividad_comercial'] = $value;
+                } elseif (strpos($label, 'CIIU') !== false) {
+                    $data['ciiu'] = $value;
+                } elseif (strpos($label, 'Dirección Legal') !== false || (strpos($label, 'Dirección') !== false && strpos($label, 'Legal') === false)) {
                     $data['direccion'] = $value;
+                } elseif (strpos($label, 'Urbanizacion') !== false || strpos($label, 'Urbanización') !== false) {
+                    $data['urbanizacion'] = $value;
+                } elseif (strpos($label, 'Distrito') !== false && strpos($label, 'Ciudad') !== false) {
+                    $data['distrito_ciudad'] = $value;
+                } elseif (strpos($label, 'Provincia') !== false && strpos($label, 'Departamento') === false) {
+                    $data['provincia_detalle'] = $value;
+                } elseif (strpos($label, 'Departamento') !== false) {
+                    $data['departamento_detalle'] = $value;
+                } elseif (strpos($label, 'Teléfono') !== false || strpos($label, 'Telefono') !== false) {
+                    $data['telefono'] = $value;
+                } elseif (strpos($label, 'Estado') !== false && strpos($label, 'Domicilio') !== false) {
+                    $data['estado_domicilio'] = $value;
                 } elseif (strpos($label, 'Estado') !== false) {
                     $data['estado'] = $value;
                 }
             }
         });
         
-        // Buscar website
+        // Buscar website (excluyendo redes sociales)
         $webLinks = $crawler->filter('a[href*="http"]');
         $webLinks->each(function($node) use (&$data) {
             $href = $node->attr('href');
-            if (!strpos($href, 'universidadperu.com') && !isset($data['website'])) {
+            
+            // Lista de dominios a excluir (redes sociales, directorios, etc)
+            $dominiosExcluidos = [
+                'facebook.com',
+                'twitter.com',
+                'instagram.com',
+                'linkedin.com',
+                'youtube.com',
+                'tiktok.com',
+                'pinterest.com',
+                'universidadperu.com',
+                'wikipedia.org',
+                'google.com',
+                'yahoo.com',
+                'bing.com'
+            ];
+            
+            $esExcluido = false;
+            foreach ($dominiosExcluidos as $dominio) {
+                if (strpos($href, $dominio) !== false) {
+                    $esExcluido = true;
+                    break;
+                }
+            }
+            
+            if (!$esExcluido && !isset($data['website'])) {
                 $data['website'] = $href;
                 
-                // Generar y verificar emails probables
+                // Solo generar emails si es un dominio corporativo real
                 $domain = parse_url($href, PHP_URL_HOST);
                 $domain = str_replace('www.', '', $domain);
-                if ($domain) {
+                
+                // Verificar que sea un dominio corporativo válido
+                if ($domain && !$this->esDominioGenerico($domain)) {
                     // Generar múltiples emails probables
                     $emailsProbables = [
                         "info@$domain",
                         "contacto@$domain",
-                        "ventas@$domain",
-                        "reservas@$domain" // Para restaurantes
+                        "ventas@$domain"
                     ];
+                    
+                    // Si es restaurante, agregar emails específicos
+                    if (isset($data['actividad_comercial']) && 
+                        (stripos($data['actividad_comercial'], 'restaurant') !== false ||
+                         stripos($data['actividad_comercial'], 'bar') !== false ||
+                         stripos($data['actividad_comercial'], 'cantina') !== false)) {
+                        $emailsProbables[] = "reservas@$domain";
+                        $emailsProbables[] = "pedidos@$domain";
+                    }
                     
                     // Verificar cuál existe
                     $emailValido = null;
@@ -398,9 +458,18 @@ class ScraperJerarquico
                         }
                     }
                     
-                    if ($emailValido) {
+                    if ($emailValido && $scoreMaximo >= 50) { // Solo si tiene score decente
                         $data['email_probable'] = $emailValido;
                         $data['email_verificado'] = ($data['email_estado'] == 'valido');
+                    }
+                } else {
+                    // Si no hay website válido, intentar generar email basado en nombre
+                    if (isset($data['nombre_comercial']) && isset($data['ruc'])) {
+                        $nombreLimpio = $this->limpiarNombreParaDominio($data['nombre_comercial']);
+                        if ($nombreLimpio) {
+                            $data['email_sugerido'] = "contacto@{$nombreLimpio}.com.pe";
+                            $data['email_nota'] = 'Email sugerido (sin website)';
+                        }
                     }
                 }
             }
@@ -430,7 +499,6 @@ class ScraperJerarquico
                 'Departamento',
                 'Provincia',
                 'Distrito',
-                'Dirección',
                 'Teléfono',
                 'Website',
                 'Email',
@@ -442,20 +510,25 @@ class ScraperJerarquico
             
             // Data
             foreach ($resultados as $empresa) {
+                // Determinar el email a mostrar
+                $email = $empresa['email_probable'] ?? $empresa['email_sugerido'] ?? '';
+                
+                // Usar nombre comercial si existe, sino usar el nombre del listado
+                $nombre = $empresa['nombre_comercial'] ?? $empresa['nombre'] ?? '';
+                
                 fputcsv($fp, [
-                    $empresa['nombre'] ?? '',
+                    $nombre,
                     $empresa['ruc'] ?? '',
                     $empresa['razon_social'] ?? '',
                     $empresa['departamento'] ?? '',
                     $empresa['cod_provincia'] ?? '',
                     $empresa['cod_distrito'] ?? '',
-                    $empresa['direccion'] ?? '',
                     $empresa['telefono'] ?? '',
                     $empresa['website'] ?? '',
-                    $empresa['email_probable'] ?? '',
+                    $email,
                     isset($empresa['email_verificado']) && $empresa['email_verificado'] ? 'Sí' : 'No',
                     $empresa['email_score'] ?? 0,
-                    $empresa['estado'] ?? '',
+                    $empresa['condicion'] ?? $empresa['estado'] ?? '',
                     $empresa['fecha_scraping'] ?? ''
                 ]);
             }
@@ -468,6 +541,59 @@ class ScraperJerarquico
             echo "✅ Empresas procesadas: " . count($resultados) . "\n";
             echo "💾 Archivo guardado: $filename\n";
         }
+    }
+    
+    /**
+     * Verificar si es un dominio genérico (no corporativo)
+     */
+    private function esDominioGenerico($domain)
+    {
+        $dominiosGenericos = [
+            'gmail.com',
+            'hotmail.com',
+            'yahoo.com',
+            'outlook.com',
+            'live.com',
+            'msn.com',
+            'aol.com',
+            'mail.com',
+            'protonmail.com',
+            'icloud.com'
+        ];
+        
+        foreach ($dominiosGenericos as $generico) {
+            if (strpos($domain, $generico) !== false) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Limpiar nombre comercial para generar dominio
+     */
+    private function limpiarNombreParaDominio($nombre)
+    {
+        // Quitar caracteres especiales y números
+        $nombre = preg_replace('/[^a-zA-Z\s]/', '', $nombre);
+        
+        // Quitar palabras comunes de empresas
+        $palabrasExcluir = ['EIRL', 'SAC', 'SA', 'SRL', 'SL', 'SCRL', 'CIA', 'RESTAURANT', 'RESTAURANTE', 'BAR', 'CEVICHERIA'];
+        foreach ($palabrasExcluir as $palabra) {
+            $nombre = str_ireplace($palabra, '', $nombre);
+        }
+        
+        // Convertir a minúsculas y quitar espacios
+        $nombre = strtolower(trim($nombre));
+        $nombre = str_replace(' ', '', $nombre);
+        
+        // Si queda muy corto, no es útil
+        if (strlen($nombre) < 3) {
+            return null;
+        }
+        
+        return substr($nombre, 0, 20); // Limitar longitud
     }
     
     /**
