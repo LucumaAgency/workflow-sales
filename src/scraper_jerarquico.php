@@ -1,9 +1,11 @@
 <?php
 
 require_once __DIR__ . '/../vendor/autoload.php';
+require_once __DIR__ . '/EmailVerifier.php';
 
 use GuzzleHttp\Client;
 use Symfony\Component\DomCrawler\Crawler;
+use WorkflowSales\EmailVerifier;
 
 /**
  * Scraper jerárquico para UniversidadPeru
@@ -16,6 +18,7 @@ class ScraperJerarquico
     private $outputDir;
     private $progressFile;
     private $baseUrl = 'https://www.universidadperu.com/empresas/';
+    private $emailVerifier;
     
     // Mapeo de departamentos con sus códigos
     private $departamentos = [
@@ -58,6 +61,7 @@ class ScraperJerarquico
         
         $this->outputDir = __DIR__ . '/../data/output/';
         $this->progressFile = __DIR__ . '/../data/scraper_jerarquico_progress.json';
+        $this->emailVerifier = new EmailVerifier();
         
         if (!is_dir($this->outputDir)) {
             mkdir($this->outputDir, 0777, true);
@@ -368,11 +372,36 @@ class ScraperJerarquico
             if (!strpos($href, 'universidadperu.com') && !isset($data['website'])) {
                 $data['website'] = $href;
                 
-                // Generar email probable
+                // Generar y verificar emails probables
                 $domain = parse_url($href, PHP_URL_HOST);
                 $domain = str_replace('www.', '', $domain);
                 if ($domain) {
-                    $data['email_probable'] = "info@$domain";
+                    // Generar múltiples emails probables
+                    $emailsProbables = [
+                        "info@$domain",
+                        "contacto@$domain",
+                        "ventas@$domain",
+                        "reservas@$domain" // Para restaurantes
+                    ];
+                    
+                    // Verificar cuál existe
+                    $emailValido = null;
+                    $scoreMaximo = 0;
+                    
+                    foreach ($emailsProbables as $email) {
+                        $verificacion = $this->emailVerifier->verificar($email);
+                        if ($verificacion['score'] > $scoreMaximo) {
+                            $scoreMaximo = $verificacion['score'];
+                            $emailValido = $email;
+                            $data['email_score'] = $verificacion['score'];
+                            $data['email_estado'] = $verificacion['estado'];
+                        }
+                    }
+                    
+                    if ($emailValido) {
+                        $data['email_probable'] = $emailValido;
+                        $data['email_verificado'] = ($data['email_estado'] == 'valido');
+                    }
                 }
             }
         });
@@ -404,7 +433,9 @@ class ScraperJerarquico
                 'Dirección',
                 'Teléfono',
                 'Website',
-                'Email Probable',
+                'Email',
+                'Email Verificado',
+                'Email Score',
                 'Estado',
                 'Fecha Scraping'
             ]);
@@ -422,6 +453,8 @@ class ScraperJerarquico
                     $empresa['telefono'] ?? '',
                     $empresa['website'] ?? '',
                     $empresa['email_probable'] ?? '',
+                    isset($empresa['email_verificado']) && $empresa['email_verificado'] ? 'Sí' : 'No',
+                    $empresa['email_score'] ?? 0,
                     $empresa['estado'] ?? '',
                     $empresa['fecha_scraping'] ?? ''
                 ]);
