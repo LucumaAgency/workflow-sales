@@ -342,6 +342,12 @@ class ScraperJerarquico
                     continue; // Saltar esta empresa
                 }
                 
+                // Verificar si tiene website válido (no vacío y no redes sociales)
+                if (!isset($detalles['website']) || empty($detalles['website'])) {
+                    echo "   ⚠️ Sin website corporativo - EXCLUIDA\n";
+                    continue; // Saltar empresas sin website
+                }
+                
                 $empresaCompleta = array_merge($empresa, $detalles);
                 $resultados[] = $empresaCompleta;
                 
